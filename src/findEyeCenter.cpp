@@ -1,3 +1,5 @@
+#include "..\include\findEyeCenter.hpp"
+
 #include "opencv2/objdetect/objdetect.hpp"
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
@@ -198,7 +200,7 @@ bool floodShouldPushPoint(const cv::Point &np, const cv::Mat &mat) {
 
 // returns a mask
 cv::Mat floodKillEdges(cv::Mat &mat) {
-  rectangle(mat,cv::Rect(0,0,mat.cols,mat.rows),255);
+  cv::rectangle(mat,cv::Rect(0,0,mat.cols,mat.rows),255);
   
   cv::Mat mask(mat.rows, mat.cols, CV_8U, 255);
   std::queue<cv::Point> toDo;
@@ -223,4 +225,33 @@ cv::Mat floodKillEdges(cv::Mat &mat) {
     mask.at<uchar>(p) = 0;
   }
   return mask;
+}
+
+cv::vector<cv::Point> findEyes(cv::Mat frame_gray, cv::Rect face, full_object_detection &shape) {
+	cv::vector<cv::Point> pupils;
+	cv::vector<cv::Point> pointListLeftEye;
+	for (int i = 36; i <= 41; i++) {
+		cv::circle(frame_gray, cv::Point(shape.part(i)(0), shape.part(i)(1)), 2, cv::Scalar(255));
+		pointListLeftEye.push_back(cv::Point(shape.part(i)(0), shape.part(i)(1)));
+	}
+	cv::vector<cv::Point> pointListRightEye;
+	for (int i = 42; i <= 47; i++) {
+		cv::circle(frame_gray, cv::Point(shape.part(i)(0), shape.part(i)(1)), 2, cv::Scalar(255));
+		pointListRightEye.push_back(cv::Point(shape.part(i)(0), shape.part(i)(1)));
+	}
+	cv::Rect leftEyeRegion = cv::boundingRect(pointListLeftEye);
+	cv::Rect rightEyeRegion = cv::boundingRect(pointListRightEye);
+	cv::rectangle(frame_gray, leftEyeRegion, cv::Scalar(255));
+	cv::rectangle(frame_gray, rightEyeRegion, cv::Scalar(255));
+	//-- Find Eye Centers
+	cv::Point leftPupil = findEyeCenter(frame_gray, leftEyeRegion, "Left Eye");
+	cv::Point rightPupil = findEyeCenter(frame_gray, rightEyeRegion, "Right Eye");
+	// change eye centers to face coordinates
+	rightPupil.x += rightEyeRegion.x;
+	rightPupil.y += rightEyeRegion.y;
+	leftPupil.x += leftEyeRegion.x;
+	leftPupil.y += leftEyeRegion.y;
+	pupils.push_back(leftPupil);
+	pupils.push_back(rightPupil);
+	return pupils;
 }

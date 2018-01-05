@@ -16,92 +16,14 @@
 
 #include "constants.hpp"
 #include "findEyeCenter.hpp"
+#include "eyeClosed.hpp"
 
 using namespace dlib;
 using namespace std;
 cv::Mat debugImage;
 
-/**
-* @brief Detecting eye EAR with facial landmarks.
-*
-* Based on the work by Soukupová and Èech in their 2016 paper, Real-Time Eye Blink Detection using Facial Landmarks,
-* We can then derive an equation that reflects this relation called the eye aspect ratio (EAR).
-* Each eye is represented by 6 (x, y)-coordinates, starting at the left-corner of the eye (as if you were looking at the person),
-* And then working clockwise around the remainder of the region (p1-p6):
-* EAR = ( ||p2-p6|| + ||p3-p5|| ) / (2*||p1-p4||)
-* There is a relation between the width and the height of these coordinates.
-* Numbers of landmarks for left eye: 37-42 (counting start with 1).
-* Numbers of landmarks for right eye: 43-48 (counting start with 1).
-*
-* @param[in] landmark_collection Input rcr::LandmarkCollection.
-* @return eye aspect for both eyes.
-*/
-bool eye_close_right(full_object_detection &shape, double eye_closed_threshold = 0.2) {
-
-	// Eye aspect for right eye
-	// compute the euclidean distances between the two sets of vertical eye landmarks(x, y) - coordinates
-	double right_A = cv::norm(cv::Point2f(shape.part(43)(0), shape.part(43)(1)) - cv::Point2f(shape.part(47)(0), shape.part(47)(1)));
-	double right_B = cv::norm(cv::Point2f(shape.part(44)(0), shape.part(44)(1)) - cv::Point2f(shape.part(46)(0), shape.part(46)(1)));
-	// compute the euclidean distance between the horizontal eye landmark(x, y) - coordinates
-	double right_C = cv::norm(cv::Point2f(shape.part(42)(0), shape.part(42)(1)) - cv::Point2f(shape.part(45)(0), shape.part(45)(1)));
-	double right_ear = (right_A + right_B) / (2.0 * right_C);
-
-	if (right_ear < eye_closed_threshold) {
-		return true;
-	}
-	else {
-		return false;
-	}
-}
-
-bool eye_close_left(full_object_detection &shape, double eye_closed_threshold = 0.2) {
-	// Eye aspect for left eye
-	// compute the euclidean distances between the two sets of vertical eye landmarks(x, y) - coordinates
-	double left_A = cv::norm(cv::Point2f(shape.part(37)(0), shape.part(37)(1)) - cv::Point2f(shape.part(41)(0), shape.part(41)(1)));
-	double left_B = cv::norm(cv::Point2f(shape.part(38)(0), shape.part(38)(1)) - cv::Point2f(shape.part(40)(0), shape.part(40)(1)));
-	// compute the euclidean distance between the horizontal eye landmark(x, y) - coordinates
-	double left_C = cv::norm(cv::Point2f(shape.part(36)(0), shape.part(36)(1)) - cv::Point2f(shape.part(39)(0), shape.part(39)(1)));
-	double left_ear = (left_A + left_B) / (2.0 * left_C);
-
-	if (left_ear < eye_closed_threshold) {
-		return true;
-	}
-	else {
-		return false;
-	}
-}
-
 cv::Rect dlibRectangleToOpenCV(dlib::rectangle r) {
 	return cv::Rect(cv::Point2i(r.left(), r.top()), cv::Point2i(r.right() + 1, r.bottom() + 1));
-}
-
-cv::vector<cv::Point> findEyes(cv::Mat frame_gray, cv::Rect face, full_object_detection &shape) {
-	cv::vector<cv::Point> pupils;
-	cv::vector<cv::Point> pointListLeftEye;
-	for (int i = 36; i <= 41; i++) {
-		cv::circle(frame_gray, cv::Point(shape.part(i)(0), shape.part(i)(1)), 2, cv::Scalar(255));
-		pointListLeftEye.push_back(cv::Point(shape.part(i)(0), shape.part(i)(1)));
-	}
-	cv::vector<cv::Point> pointListRightEye;
-	for (int i = 42; i <= 47; i++) {
-		cv::circle(frame_gray, cv::Point(shape.part(i)(0), shape.part(i)(1)), 2, cv::Scalar(255));
-		pointListRightEye.push_back(cv::Point(shape.part(i)(0), shape.part(i)(1)));
-	}
-	cv::Rect leftEyeRegion = cv::boundingRect(pointListLeftEye);
-	cv::Rect rightEyeRegion = cv::boundingRect(pointListRightEye);
-	cv::rectangle(frame_gray, leftEyeRegion, cv::Scalar(255));
-	cv::rectangle(frame_gray, rightEyeRegion, cv::Scalar(255));
-	//-- Find Eye Centers
-	cv::Point leftPupil = findEyeCenter(frame_gray, leftEyeRegion, "Left Eye");
-	cv::Point rightPupil = findEyeCenter(frame_gray, rightEyeRegion, "Right Eye");
-	// change eye centers to face coordinates
-	rightPupil.x += rightEyeRegion.x;
-	rightPupil.y += rightEyeRegion.y;
-	leftPupil.x += leftEyeRegion.x;
-	leftPupil.y += leftEyeRegion.y;
-	pupils.push_back(leftPupil);
-	pupils.push_back(rightPupil);
-	return pupils;
 }
 
 int main()
