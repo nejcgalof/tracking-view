@@ -1,21 +1,15 @@
 #include "..\include\eyeClosed.hpp"
+
 /**
-* @brief Detecting eye EAR with facial landmarks.
-*
 * Based on the work by Soukupová and Èech in their 2016 paper, Real-Time Eye Blink Detection using Facial Landmarks,
 * We can then derive an equation that reflects this relation called the eye aspect ratio (EAR).
 * Each eye is represented by 6 (x, y)-coordinates, starting at the left-corner of the eye (as if you were looking at the person),
 * And then working clockwise around the remainder of the region (p1-p6):
 * EAR = ( ||p2-p6|| + ||p3-p5|| ) / (2*||p1-p4||)
 * There is a relation between the width and the height of these coordinates.
-* Numbers of landmarks for left eye: 37-42 (counting start with 1).
 * Numbers of landmarks for right eye: 43-48 (counting start with 1).
-*
-* @param[in] landmark_collection Input rcr::LandmarkCollection.
-* @return eye aspect for both eyes.
 */
 bool eye_close_right(full_object_detection &shape, double eye_closed_threshold) {
-
 	// Eye aspect for right eye
 	// compute the euclidean distances between the two sets of vertical eye landmarks(x, y) - coordinates
 	double right_A = cv::norm(cv::Point2f(shape.part(43)(0), shape.part(43)(1)) - cv::Point2f(shape.part(47)(0), shape.part(47)(1)));
@@ -32,6 +26,15 @@ bool eye_close_right(full_object_detection &shape, double eye_closed_threshold) 
 	}
 }
 
+/**
+* Based on the work by Soukupová and Èech in their 2016 paper, Real-Time Eye Blink Detection using Facial Landmarks,
+* We can then derive an equation that reflects this relation called the eye aspect ratio (EAR).
+* Each eye is represented by 6 (x, y)-coordinates, starting at the left-corner of the eye (as if you were looking at the person),
+* And then working clockwise around the remainder of the region (p1-p6):
+* EAR = ( ||p2-p6|| + ||p3-p5|| ) / (2*||p1-p4||)
+* There is a relation between the width and the height of these coordinates.
+* Numbers of landmarks for left eye: 37-42 (counting start with 1).
+*/
 bool eye_close_left(full_object_detection &shape, double eye_closed_threshold) {
 	// Eye aspect for left eye
 	// compute the euclidean distances between the two sets of vertical eye landmarks(x, y) - coordinates

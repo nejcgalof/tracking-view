@@ -1,63 +1,58 @@
 #include "..\include\findEyeCenter.hpp"
-
 #include "opencv2/objdetect/objdetect.hpp"
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
-
-//#include <mgl2/mgl.h>
 
 #include <iostream>
 #include <queue>
 #include <stdio.h>
 
-#include "constants.hpp"
-#include "helpers.hpp"
+bool inMat(cv::Point p, int rows, int cols) {
+	return p.x >= 0 && p.x < cols && p.y >= 0 && p.y < rows;
+}
+
+cv::Mat matrix_magnitude(cv::Mat &matX, cv::Mat &matY) {
+	cv::Mat magnitude(matX.rows, matX.cols, CV_64F);
+	for (int y = 0; y < matX.rows; ++y) {
+		double *Xr = matX.ptr<double>(y);
+		double *Yr = matY.ptr<double>(y);
+		double *Mr = magnitude.ptr<double>(y);
+		for (int x = 0; x < matX.cols; ++x) {
+			double gX = Xr[x];
+			double gY = Yr[x];
+			double magnitude = sqrt((gX * gX) + (gY * gY));
+			Mr[x] = magnitude;
+		}
+	}
+	return magnitude;
+}
+
+double compute_dynamic_threshold(const cv::Mat &mat, double std_dev_factor) {
+	cv::Scalar mean_magnitude_gradient, std_magnitude_gradient;
+	cv::meanStdDev(mat, mean_magnitude_gradient, std_magnitude_gradient);
+	double std_dev = std_magnitude_gradient[0] / sqrt(mat.rows*mat.cols);
+	return std_dev_factor * std_dev + mean_magnitude_gradient[0];
+}
 
 // Pre-declarations
 cv::Mat floodKillEdges(cv::Mat &mat);
 
-#pragma mark Visualization
-/*
-template<typename T> mglData *matToData(const cv::Mat &mat) {
-  mglData *data = new mglData(mat.cols,mat.rows);
-  for (int y = 0; y < mat.rows; ++y) {
-    const T *Mr = mat.ptr<T>(y);
-    for (int x = 0; x < mat.cols; ++x) {
-      data->Put(((mreal)Mr[x]),x,y);
-    }
-  }
-  return data;
+// Resize eye ROI to bigger fix width. Keep ratio on cols and rows. If eye to far or to near camera. Keep always same speed.
+void scale_to_fix_size(const cv::Mat &src,cv::Mat &dst) {
+  cv::resize(src, dst, cv::Size(fast_eye_width,(((float)fast_eye_width)/src.cols) * src.rows));
 }
 
-void plotVecField(const cv::Mat &gradientX, const cv::Mat &gradientY, const cv::Mat &img) {
-  mglData *xData = matToData<double>(gradientX);
-  mglData *yData = matToData<double>(gradientY);
-  mglData *imgData = matToData<float>(img);
-  
-  mglGraph gr(0,gradientX.cols * 20, gradientY.rows * 20);
-  gr.Vect(*xData, *yData);
-  gr.Mesh(*imgData);
-  gr.WriteFrame("vecField.png");
-  
-  delete xData;
-  delete yData;
-  delete imgData;
-}*/
-
-#pragma mark Helpers
-
-cv::Point unscalePoint(cv::Point p, cv::Rect origSize) {
-  float ratio = (((float)kFastEyeWidth)/origSize.width);
-  int x = round(p.x / ratio);
-  int y = round(p.y / ratio);
-  return cv::Point(x,y);
+// Because we scale eye ROI, point location is not correct. We must "unscaled".
+cv::Point unscale_point(cv::Point p, cv::Rect origSize) {
+	float ratio = (((float)fast_eye_width) / origSize.width);
+	int x = round(p.x / ratio);
+	int y = round(p.y / ratio);
+	return cv::Point(x, y);
 }
 
-void scaleToFastSize(const cv::Mat &src,cv::Mat &dst) {
-  cv::resize(src, dst, cv::Size(kFastEyeWidth,(((float)kFastEyeWidth)/src.cols) * src.rows));
-}
-
-cv::Mat computeMatXGradient(const cv::Mat &mat) {
+// Matlab code: [x(2)-x(1) (x(3:end)-x(1:end-2))/2 x(end)-x(end-1)] translated to cpp
+// Gradient algorithm
+cv::Mat compute_X_gradient(const cv::Mat &mat) {
   cv::Mat out(mat.rows,mat.cols,CV_64F);
   
   for (int y = 0; y < mat.rows; ++y) {
@@ -74,9 +69,7 @@ cv::Mat computeMatXGradient(const cv::Mat &mat) {
   return out;
 }
 
-#pragma mark Main Algorithm
-
-void testPossibleCentersFormula(int x, int y, const cv::Mat &weight,double gx, double gy, cv::Mat &out) {
+void test_possible_center(int x, int y, const cv::Mat &weight,double gx, double gy, cv::Mat &out) {
   // for all possible centers
   for (int cy = 0; cy < out.rows; ++cy) {
     double *Or = out.ptr<double>(cy);
@@ -104,70 +97,79 @@ void testPossibleCentersFormula(int x, int y, const cv::Mat &weight,double gx, d
   }
 }
 
-cv::Point findEyeCenter(cv::Mat face, cv::Rect eye, std::string debugWindow) {
-  cv::Mat eyeROIUnscaled = face(eye);
-  cv::Mat eyeROI;
-  scaleToFastSize(eyeROIUnscaled, eyeROI);
-  // draw eye region
-  //rectangle(face,eye,1234);
-  //-- Find the gradient
-  cv::Mat gradientX = computeMatXGradient(eyeROI);
-  cv::Mat gradientY = computeMatXGradient(eyeROI.t()).t();
-  //-- Normalize and threshold the gradient
-  // compute all the magnitudes
-  cv::Mat mags = matrixMagnitude(gradientX, gradientY);
-  //compute the threshold
-  double gradientThresh = computeDynamicThreshold(mags, kGradientThreshold);
-  //double gradientThresh = kGradientThreshold;
-  //double gradientThresh = 0;
-  //normalize
-  for (int y = 0; y < eyeROI.rows; ++y) {
-    double *Xr = gradientX.ptr<double>(y), *Yr = gradientY.ptr<double>(y);
-    const double *Mr = mags.ptr<double>(y);
-    for (int x = 0; x < eyeROI.cols; ++x) {
-      double gX = Xr[x], gY = Yr[x];
-      double magnitude = Mr[x];
-      if (magnitude > gradientThresh) {
-        Xr[x] = gX/magnitude;
-        Yr[x] = gY/magnitude;
-      } else {
-        Xr[x] = 0.0;
-        Yr[x] = 0.0;
-      }
-    }
+cv::Point findEyeCenter(cv::Mat face, cv::Rect eye) {
+  cv::Mat eye_ROI_unscaled = face(eye);
+  cv::Mat eye_ROI;
+  scale_to_fix_size(eye_ROI_unscaled, eye_ROI);
+
+  // Find the gradient
+  cv::Mat gradientX = compute_X_gradient(eye_ROI);
+  cv::Mat gradientY = compute_X_gradient(eye_ROI.t()).t(); // transpose for y gradient - turn back for right direction
+  imshow("gradientX",gradientX);
+  imshow("gradientY",gradientY);
+  // Normalize and threshold the gradient
+  // Compute all the magnitudes
+  cv::Mat mags = matrix_magnitude(gradientX, gradientY);
+  imshow("mags1", mags);
+  // Compute the threshold
+  double gradient_thresh = compute_dynamic_threshold(mags, gradient_threshold);
+  // Normalize
+  for (int y = 0; y < eye_ROI.rows; ++y) {
+	  double *Xr = gradientX.ptr<double>(y);
+	  double *Yr = gradientY.ptr<double>(y);
+	  double *Mr = mags.ptr<double>(y);
+	  for (int x = 0; x < eye_ROI.cols; ++x) {
+		  double gX = Xr[x];
+		  double gY = Yr[x];
+		  double magnitude = Mr[x];
+		  if (magnitude > gradient_thresh) {
+			  Xr[x] = gX / magnitude;
+			  Yr[x] = gY / magnitude;
+		  }
+		  else {
+			  Xr[x] = 0.0;
+			  Yr[x] = 0.0;
+		  }
+	  }
   }
-  //imshow(debugWindow,gradientX);
-  //-- Create a blurred and inverted image for weighting
+  imshow("polX",gradientX);
+  imshow("polY", gradientY);
+  //std::cin.get();
+
+  // Create a blurred and inverted image for weighting
   cv::Mat weight;
-  GaussianBlur( eyeROI, weight, cv::Size( kWeightBlurSize, kWeightBlurSize ), 0, 0 );
+  GaussianBlur( eye_ROI, weight, cv::Size(weight_blur_size, weight_blur_size), 0, 0 );
   for (int y = 0; y < weight.rows; ++y) {
     unsigned char *row = weight.ptr<unsigned char>(y);
     for (int x = 0; x < weight.cols; ++x) {
       row[x] = (255 - row[x]);
     }
   }
-  //imshow(debugWindow,weight);
-  //-- Run the algorithm!
-  cv::Mat outSum = cv::Mat::zeros(eyeROI.rows,eyeROI.cols,CV_64F);
-  // for each possible gradient location
-  // Note: these loops are reversed from the way the paper does them
-  // it evaluates every possible center for each gradient location instead of
-  // every possible gradient location for every center.
-  //printf("Eye Size: %ix%i\n",outSum.cols,outSum.rows);
+  imshow("weighted",weight);
+  cv::waitKey(39);
+
+  // Run the algorithm
+
+  cv::Mat out_sum = cv::Mat::zeros(eye_ROI.rows, eye_ROI.cols, CV_64F);
+  // For each possible gradient location loops for every possible center
   for (int y = 0; y < weight.rows; ++y) {
-    const double *Xr = gradientX.ptr<double>(y), *Yr = gradientY.ptr<double>(y);
-    for (int x = 0; x < weight.cols; ++x) {
-      double gX = Xr[x], gY = Yr[x];
-      if (gX == 0.0 && gY == 0.0) {
-        continue;
-      }
-      testPossibleCentersFormula(x, y, weight, gX, gY, outSum);
-    }
+	double *Xr = gradientX.ptr<double>(y);
+	double *Yr = gradientY.ptr<double>(y);
+	for (int x = 0; x < weight.cols; ++x) {
+		double gX = Xr[x];
+		double gY = Yr[x];
+		// If not both gradients 0 - possible center
+		if (gX == 0.0 && gY == 0.0) {
+			continue;
+		}
+		test_possible_center(x, y, weight, gX, gY, out_sum);
+	}
   }
+
   // scale all the values down, basically averaging them
   double numGradients = (weight.rows*weight.cols);
   cv::Mat out;
-  outSum.convertTo(out, CV_32F,1.0/numGradients);
+  out_sum.convertTo(out, CV_32F,1.0/numGradients);
   //imshow(debugWindow,out);
   //-- Find the maximum point
   cv::Point maxP;
@@ -179,20 +181,14 @@ cv::Point findEyeCenter(cv::Mat face, cv::Rect eye, std::string debugWindow) {
     //double floodThresh = computeDynamicThreshold(out, 1.5);
     double floodThresh = maxVal * kPostProcessThreshold;
     cv::threshold(out, floodClone, floodThresh, 0.0f, cv::THRESH_TOZERO);
-    if(kPlotVectorField) {
-      //plotVecField(gradientX, gradientY, floodClone);
-      imwrite("eyeFrame.png",eyeROIUnscaled);
-    }
     cv::Mat mask = floodKillEdges(floodClone);
     //imshow(debugWindow + " Mask",mask);
     //imshow(debugWindow,out);
     // redo max
     cv::minMaxLoc(out, NULL,&maxVal,NULL,&maxP,mask);
   }
-  return unscalePoint(maxP,eye);
+  return unscale_point(maxP,eye);
 }
-
-#pragma mark Postprocessing
 
 bool floodShouldPushPoint(const cv::Point &np, const cv::Mat &mat) {
   return inMat(np, mat.rows, mat.cols);
@@ -229,28 +225,31 @@ cv::Mat floodKillEdges(cv::Mat &mat) {
 
 cv::vector<cv::Point> findEyes(cv::Mat frame_gray, cv::Rect face, full_object_detection &shape) {
 	cv::vector<cv::Point> pupils;
+	// Put eye landmarks (points) to vector
 	cv::vector<cv::Point> pointListLeftEye;
 	for (int i = 36; i <= 41; i++) {
-		cv::circle(frame_gray, cv::Point(shape.part(i)(0), shape.part(i)(1)), 2, cv::Scalar(255));
 		pointListLeftEye.push_back(cv::Point(shape.part(i)(0), shape.part(i)(1)));
 	}
 	cv::vector<cv::Point> pointListRightEye;
 	for (int i = 42; i <= 47; i++) {
-		cv::circle(frame_gray, cv::Point(shape.part(i)(0), shape.part(i)(1)), 2, cv::Scalar(255));
 		pointListRightEye.push_back(cv::Point(shape.part(i)(0), shape.part(i)(1)));
 	}
+
+	// Get bounding rect
 	cv::Rect leftEyeRegion = cv::boundingRect(pointListLeftEye);
 	cv::Rect rightEyeRegion = cv::boundingRect(pointListRightEye);
-	cv::rectangle(frame_gray, leftEyeRegion, cv::Scalar(255));
-	cv::rectangle(frame_gray, rightEyeRegion, cv::Scalar(255));
-	//-- Find Eye Centers
-	cv::Point leftPupil = findEyeCenter(frame_gray, leftEyeRegion, "Left Eye");
-	cv::Point rightPupil = findEyeCenter(frame_gray, rightEyeRegion, "Right Eye");
-	// change eye centers to face coordinates
+
+	// Find Eye Centers
+	cv::Point leftPupil = findEyeCenter(frame_gray, leftEyeRegion);
+	cv::Point rightPupil = findEyeCenter(frame_gray, rightEyeRegion);
+
+	// Change eye centers to face coordinates
 	rightPupil.x += rightEyeRegion.x;
 	rightPupil.y += rightEyeRegion.y;
 	leftPupil.x += leftEyeRegion.x;
 	leftPupil.y += leftEyeRegion.y;
+
+	// Add to result
 	pupils.push_back(leftPupil);
 	pupils.push_back(rightPupil);
 	return pupils;
