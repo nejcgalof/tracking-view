@@ -130,7 +130,6 @@ int main()
 							changey *= 2;
 						}
 						int posx = p.x + changex;
-						std::cout << posx << endl;
 						SetCursorPos(p.x + changex, p.y);
 					}
 				}
