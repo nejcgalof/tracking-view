@@ -16,6 +16,6 @@ const int fast_eye_width = 50;
 const int weight_blur_size = 5;
 const double gradient_threshold = 0.3;
 
-cv::Point findEyeCenter(cv::Mat face, cv::Rect eye, std::string window);
+cv::Point find_eye_pupil(cv::Mat face, cv::Rect eye, std::string window);
 
-cv::vector<cv::Point> findEyes(cv::Mat frame_gray, cv::Rect face, full_object_detection & shape);
+cv::vector<cv::Point> find_eyes(cv::Mat frame_gray, cv::Rect face, full_object_detection & shape);

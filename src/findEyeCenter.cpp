@@ -16,7 +16,7 @@ cv::Mat matrix_magnitude(cv::Mat &matX, cv::Mat &matY) {
 	return magnitude;
 }
 
-double compute_dynamic_threshold(const cv::Mat &mat, double std_dev_factor) {
+double compute_dynamic_threshold(cv::Mat &mat, double std_dev_factor) {
 	cv::Scalar mean_magnitude_gradient, std_magnitude_gradient;
 	cv::meanStdDev(mat, mean_magnitude_gradient, std_magnitude_gradient);
 	double std_dev = std_magnitude_gradient[0] / sqrt(mat.rows*mat.cols);
@@ -78,7 +78,7 @@ void test_possible_center(int x, int y, double gx, double gy, cv::Mat &out) {
   }
 }
 
-cv::Point findEyeCenter(cv::Mat face, cv::Rect eye, std::string window) {
+cv::Point find_eye_pupil(cv::Mat face, cv::Rect eye, std::string window) {
   cv::Mat eye_ROI_unscaled = face(eye);
   cv::Mat eye_ROI;
   scale_to_fix_size(eye_ROI_unscaled, eye_ROI);
@@ -156,7 +156,7 @@ cv::Point findEyeCenter(cv::Mat face, cv::Rect eye, std::string window) {
   return unscale_point(maxP,eye);
 }
 
-cv::vector<cv::Point> findEyes(cv::Mat frame_gray, cv::Rect face, full_object_detection &shape) {
+cv::vector<cv::Point> find_eyes(cv::Mat frame_gray, cv::Rect face, full_object_detection &shape) {
 	cv::vector<cv::Point> pupils;
 	// Put eye landmarks (points) to vector
 	cv::vector<cv::Point> pointListLeftEye;
@@ -173,8 +173,8 @@ cv::vector<cv::Point> findEyes(cv::Mat frame_gray, cv::Rect face, full_object_de
 	cv::Rect rightEyeRegion = cv::boundingRect(pointListRightEye);
 
 	// Find Eye Centers
-	cv::Point leftPupil = findEyeCenter(frame_gray, leftEyeRegion,"left");
-	cv::Point rightPupil = findEyeCenter(frame_gray, rightEyeRegion,"right");
+	cv::Point leftPupil = find_eye_pupil(frame_gray, leftEyeRegion,"left");
+	cv::Point rightPupil = find_eye_pupil(frame_gray, rightEyeRegion,"right");
 
 	// Change eye centers to face coordinates
 	rightPupil.x += rightEyeRegion.x;

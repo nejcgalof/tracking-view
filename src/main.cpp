@@ -25,14 +25,14 @@ cv::Rect dlibRectangleToOpenCV(dlib::rectangle r) {
 	return cv::Rect(cv::Point2i(r.left(), r.top()), cv::Point2i(r.right() + 1, r.bottom() + 1));
 }
 
-cv::Point calculateEyeCentroid(const std::vector<cv::Point> eye)
+cv::Point calculate_eye_centroid(std::vector<cv::Point> eye)
 {
 	cv::Moments mu = cv::moments(eye);
 	cv::Point centroid = cv::Point(mu.m10 / mu.m00, mu.m01 / mu.m00);
 	return centroid;
 }
 
-void mouseLeftClick()
+void mouse_left_click()
 {
 	INPUT Input = { 0 };
 
@@ -97,13 +97,13 @@ int main()
 				cv::Mat frame_gray;
 				cvtColor(frame, frame_gray, CV_BGR2GRAY);
 				// Find eyes inside face - help searching inside eye landmarks (using shape)
-				cv::vector<cv::Point> pupils = findEyes(frame_gray, dlibRectangleToOpenCV(face), shape);
+				cv::vector<cv::Point> pupils = find_eyes(frame_gray, dlibRectangleToOpenCV(face), shape);
 				// Calculate left eye center
 				std::vector<cv::Point> eye_left = { cv::Point(shape.part(36)(0), shape.part(36)(1)),cv::Point(shape.part(37)(0), shape.part(37)(1)),cv::Point(shape.part(38)(0), shape.part(38)(1)),cv::Point(shape.part(39)(0), shape.part(39)(1)),cv::Point(shape.part(40)(0), shape.part(40)(1)),cv::Point(shape.part(41)(0), shape.part(41)(1)) };
-				cv::Point left_eye_center = calculateEyeCentroid(eye_left);
+				cv::Point left_eye_center = calculate_eye_centroid(eye_left);
 				// Calculate right eye center
 				std::vector<cv::Point> eye_right = { cv::Point(shape.part(42)(0), shape.part(42)(1)),cv::Point(shape.part(43)(0), shape.part(43)(1)),cv::Point(shape.part(44)(0), shape.part(44)(1)),cv::Point(shape.part(45)(0), shape.part(45)(1)),cv::Point(shape.part(46)(0), shape.part(46)(1)),cv::Point(shape.part(47)(0), shape.part(47)(1)) };
-				cv::Point right_eye_center = calculateEyeCentroid(eye_right);
+				cv::Point right_eye_center = calculate_eye_centroid(eye_right);
 				// Draw pupil and eye, if eyes not closed
 				if (!eye_close_left(shape)) {
 					cv::drawMarker(frame, left_eye_center, cv::Scalar(0, 0, 255), cv::MARKER_CROSS, 10, 1);
@@ -134,7 +134,7 @@ int main()
 					}
 				}
 				else if (gamemode) { //if only enable gamemode, but eyes closed, simulate mouse left click
-					mouseLeftClick();
+					mouse_left_click();
 				}
 			}
 
